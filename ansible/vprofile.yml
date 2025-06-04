@@ -11,13 +11,13 @@
         state: present
 
     - name: Install Tomcat
-      yum:
-        name: tomcat
-        state: present
+      amazon-linux-extras:
+        name: tomcat9
+        state: enabled
 
     - name: Start and enable Tomcat
       service:
-        name: tomcat
+        name: tomcat9
         state: started
         enabled: yes
 
