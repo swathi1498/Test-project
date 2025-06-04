@@ -4,69 +4,121 @@
   gather_facts: yes
 
   vars:
-    tomcat_service_name: tomcat8
-    tomcat_webapps_dir: /var/lib/tomcat8/webapps
+    java_package: java-1.8.0-openjdk
+    tomcat_version: 9.0.85
+    tomcat_user: tomcat
+    install_dir: /opt/tomcat
+    tomcat_url: "https://downloads.apache.org/tomcat/tomcat-9/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
+    tomcat_service_file: /etc/systemd/system/tomcat.service
 
   tasks:
 
-    - name: Install Java 1.8 OpenJDK
+    - name: Install Java 1.8
       yum:
-        name: java-1.8.0-openjdk
+        name: "{{ java_package }}"
         state: present
 
-    - name: Enable tomcat8 from amazon-linux-extras
-      amazon-linux-extras:
-        name: tomcat8
-        state: enabled
-
-    - name: Install tomcat8
-      yum:
-        name: tomcat8
+    - name: Create tomcat group
+      group:
+        name: "{{ tomcat_user }}"
         state: present
 
-    - name: Ensure tomcat service is started and enabled
+    - name: Create tomcat user
+      user:
+        name: "{{ tomcat_user }}"
+        group: "{{ tomcat_user }}"
+        home: "{{ install_dir }}"
+        shell: /bin/false
+        system: yes
+
+    - name: Download Tomcat archive
+      get_url:
+        url: "{{ tomcat_url }}"
+        dest: "/tmp/apache-tomcat-{{ tomcat_version }}.tar.gz"
+
+    - name: Create installation directory
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+
+    - name: Extract Tomcat
+      unarchive:
+        src: "/tmp/apache-tomcat-{{ tomcat_version }}.tar.gz"
+        dest: "{{ install_dir }}"
+        remote_src: yes
+        creates: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}"
+
+    - name: Symlink current version
+      file:
+        src: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}"
+        dest: "{{ install_dir }}/latest"
+        state: link
+        force: yes
+
+    - name: Set permissions
+      file:
+        path: "{{ install_dir }}"
+        state: directory
+        recurse: yes
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_user }}"
+
+    - name: Create systemd service for Tomcat
+      copy:
+        dest: "{{ tomcat_service_file }}"
+        content: |
+          [Unit]
+          Description=Apache Tomcat Web Application Container
+          After=network.target
+
+          [Service]
+          Type=forking
+
+          Environment=JAVA_HOME=/usr/lib/jvm/jre
+          Environment=CATALINA_PID={{ install_dir }}/latest/temp/tomcat.pid
+          Environment=CATALINA_HOME={{ install_dir }}/latest
+          Environment=CATALINA_BASE={{ install_dir }}/latest
+          ExecStart={{ install_dir }}/latest/bin/startup.sh
+          ExecStop={{ install_dir }}/latest/bin/shutdown.sh
+
+          User={{ tomcat_user }}
+          Group={{ tomcat_user }}
+          UMask=0007
+          RestartSec=10
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+
+    - name: Reload systemd
+      command: systemctl daemon-reexec
+
+    - name: Start and enable Tomcat
       service:
-        name: "{{ tomcat_service_name }}"
+        name: tomcat
         state: started
         enabled: yes
 
-    - name: Download latest VProfile.war file
+    - name: Download VProfile WAR
       get_url:
         url: "http://{{ nexusip }}:8081/nexus/content/repositories/VProfile-repo/{{ groupid }}/{{ time }}/{{ build }}/{{ vprofile_version }}"
         dest: "/tmp/{{ vprofile_version }}"
-        mode: '0644'
 
-    - name: Stop tomcat service before deployment
-      service:
-        name: "{{ tomcat_service_name }}"
-        state: stopped
-
-    - name: Remove existing deployed VProfile app folder or symlink
-      file:
-        path: "{{ tomcat_webapps_dir }}/VProfile"
-        state: absent
-
-    - name: Copy WAR file to tomcat webapps directory
+    - name: Deploy WAR to Tomcat
       copy:
         src: "/tmp/{{ vprofile_version }}"
-        dest: "{{ tomcat_webapps_dir }}/VProfile.war"
+        dest: "{{ install_dir }}/latest/webapps/VProfile.war"
+        owner: "{{ tomcat_user }}"
+        group: "{{ tomcat_user }}"
         mode: '0644'
 
-    - name: Start tomcat service after deployment
+    - name: Restart Tomcat after WAR deployment
       service:
-        name: "{{ tomcat_service_name }}"
-        state: started
+        name: tomcat
+        state: restarted
 
-    - name: Wait for tomcat to deploy WAR (check folder creation)
+    - name: Wait for WAR to deploy
       wait_for:
-        path: "{{ tomcat_webapps_dir }}/VProfile"
-        timeout: 120
+        path: "{{ install_dir }}/latest/webapps/VProfile"
         state: directory
-
-    - name: Optionally create symlink if you want versioned folder linked as VProfile (uncomment if needed)
-      file:
-        src: "{{ tomcat_webapps_dir }}/{{ time }}-{{ build }}"
-        dest: "{{ tomcat_webapps_dir }}/VProfile"
-        state: link
-
-    # Add other tasks if needed, e.g. stopping firewall, configuring SELinux, etc.
+        timeout: 120
