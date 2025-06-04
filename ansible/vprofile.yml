@@ -12,8 +12,8 @@
 
     - name: Install Tomcat
       amazon-linux-extras:
-        name: tomcat9
-        state: enabled
+         name: tomcat9
+         state: enabled
 
     - name: Start and enable Tomcat
       service:
