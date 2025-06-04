@@ -1,65 +1,80 @@
 ---
-- hosts: tomcatservers
+- name: Deploy VProfile Application on Ubuntu Tomcat Server
+  hosts: tomcatservers
   become: yes
-  gather_facts: yes   # Enable this for OS checks and apt usage
+  gather_facts: false
+
+  pre_tasks:
+    - name: Ensure Python3 is installed
+      raw: |
+        apt-get update -y
+        apt-get install -y python3
+      changed_when: false
+
+    - name: Ensure python3-apt is installed
+      raw: |
+        apt-get install -y python3-apt
+      changed_when: false
+
+    - name: Gather facts after Python setup
+      setup:
 
   tasks:
-  - name: Update APT package cache
-    apt:
-      update_cache: yes
+    - name: Update apt package cache
+      apt:
+        update_cache: yes
 
-  - name: Install Java 8 (OpenJDK) on Ubuntu
-    apt:
-      name: openjdk-8-jdk
-      state: present
-      update_cache: yes
+    - name: Install Java 8 (OpenJDK)
+      apt:
+        name: openjdk-8-jdk
+        state: present
 
-  - name: Install Tomcat 9 on Ubuntu
-    apt:
-      name: tomcat9
-      state: present
-      update_cache: yes
+    - name: Install Tomcat 9
+      apt:
+        name: tomcat9
+        state: present
 
-  - name: Download latest VProfile.war file
-    get_url:
-      url: "http://{{nexusip}}:8081/nexus/content/repositories/VProfile-repo/{{groupid}}/{{time}}/{{build}}/{{vprofile_version}}"
-      dest: /tmp/
-      mode: '0755'
+    - name: Download latest VProfile.war file
+      get_url:
+        url: "http://{{ nexusip }}:8081/nexus/content/repositories/VProfile-repo/{{ groupid }}/{{ time }}/{{ build }}/{{ vprofile_version }}"
+        dest: "/tmp/{{ vprofile_version }}"
+        mode: '0755'
 
-  - name: Stop Tomcat service
-    service:
-      name: tomcat9
-      state: stopped
+    - name: Stop Tomcat service
+      service:
+        name: tomcat9
+        state: stopped
 
-  - name: Copy artifact to Tomcat webapps folder
-    copy:
-      src: "/tmp/{{vprofile_version}}"
-      dest: /var/lib/tomcat9/webapps/
-      mode: '0644'
+    - name: Remove old VProfile app
+      file:
+        path: /var/lib/tomcat9/webapps/VProfile
+        state: absent
 
-  - name: Delete existing VProfile symlink (if any)
-    file:
-      path: /var/lib/tomcat9/webapps/VProfile
-      state: absent
+    - name: Copy new WAR to Tomcat webapps
+      copy:
+        src: "/tmp/{{ vprofile_version }}"
+        dest: "/var/lib/tomcat9/webapps/"
+        mode: '0755'
 
-  - name: Start Tomcat service
-    service:
-      name: tomcat9
-      state: started
+    - name: Start Tomcat service
+      service:
+        name: tomcat9
+        state: started
 
-  - name: Wait for the app to be deployed
-    wait_for:
-      path: "/var/lib/tomcat9/webapps/{{time}}-{{build}}"
-      timeout: 60
+    - name: Wait for WAR to extract
+      wait_for:
+        path: "/var/lib/tomcat9/webapps/{{ time }}-{{ build }}"
+        timeout: 60
 
-  - name: Create symbolic link to latest VProfile version
-    file:
-      src: "/var/lib/tomcat9/webapps/{{time}}-{{build}}"
-      dest: "/var/lib/tomcat9/webapps/VProfile"
-      state: link
+    - name: Link deployed app to VProfile
+      file:
+        src: "/var/lib/tomcat9/webapps/{{ time }}-{{ build }}"
+        dest: "/var/lib/tomcat9/webapps/VProfile"
+        state: link
 
-  - name: Stop ufw (Ubuntu firewall) instead of iptables
-    service:
-      name: ufw
-      state: stopped
-      enabled: no
+    - name: Stop UFW Firewall if running
+      service:
+        name: ufw
+        state: stopped
+        enabled: no
+        ignore_errors: yes
