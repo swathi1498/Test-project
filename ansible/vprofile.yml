@@ -1,23 +1,32 @@
 ---
-- name: Deploy VProfile Application on Amazon Linux / RHEL
-  hosts: tomcatservers
+- hosts: tomcatservers
   become: yes
-  gather_facts: true
+  gather_facts: yes
+
+  vars:
+    tomcat_service_name: tomcat8
+    tomcat_webapps_dir: /var/lib/tomcat8/webapps
 
   tasks:
+
     - name: Install Java 1.8 OpenJDK
       yum:
         name: java-1.8.0-openjdk
         state: present
 
-    - name: Install Tomcat
+    - name: Enable tomcat8 from amazon-linux-extras
       amazon-linux-extras:
-         name: tomcat9
-         state: enabled
+        name: tomcat8
+        state: enabled
 
-    - name: Start and enable Tomcat
+    - name: Install tomcat8
+      yum:
+        name: tomcat8
+        state: present
+
+    - name: Ensure tomcat service is started and enabled
       service:
-        name: tomcat9
+        name: "{{ tomcat_service_name }}"
         state: started
         enabled: yes
 
@@ -25,43 +34,39 @@
       get_url:
         url: "http://{{ nexusip }}:8081/nexus/content/repositories/VProfile-repo/{{ groupid }}/{{ time }}/{{ build }}/{{ vprofile_version }}"
         dest: "/tmp/{{ vprofile_version }}"
-        mode: '0755'
+        mode: '0644'
 
-    - name: Stop Tomcat before deployment
+    - name: Stop tomcat service before deployment
       service:
-        name: tomcat
+        name: "{{ tomcat_service_name }}"
         state: stopped
 
-    - name: Remove existing VProfile
+    - name: Remove existing deployed VProfile app folder or symlink
       file:
-        path: /var/lib/tomcat/webapps/VProfile
+        path: "{{ tomcat_webapps_dir }}/VProfile"
         state: absent
 
-    - name: Deploy WAR to Tomcat
+    - name: Copy WAR file to tomcat webapps directory
       copy:
         src: "/tmp/{{ vprofile_version }}"
-        dest: "/var/lib/tomcat/webapps/"
-        mode: '0755'
+        dest: "{{ tomcat_webapps_dir }}/VProfile.war"
+        mode: '0644'
 
-    - name: Start Tomcat service
+    - name: Start tomcat service after deployment
       service:
-        name: tomcat
+        name: "{{ tomcat_service_name }}"
         state: started
 
-    - name: Wait for WAR to deploy
+    - name: Wait for tomcat to deploy WAR (check folder creation)
       wait_for:
-        path: "/var/lib/tomcat/webapps/{{ time }}-{{ build }}"
-        timeout: 60
+        path: "{{ tomcat_webapps_dir }}/VProfile"
+        timeout: 120
+        state: directory
 
-    - name: Link deployed WAR to /VProfile
+    - name: Optionally create symlink if you want versioned folder linked as VProfile (uncomment if needed)
       file:
-        src: "/var/lib/tomcat/webapps/{{ time }}-{{ build }}"
-        dest: "/var/lib/tomcat/webapps/VProfile"
+        src: "{{ tomcat_webapps_dir }}/{{ time }}-{{ build }}"
+        dest: "{{ tomcat_webapps_dir }}/VProfile"
         state: link
 
-    - name: Stop iptables firewall
-      service:
-        name: iptables
-        state: stopped
-        enabled: no
-        ignore_errors: yes
+    # Add other tasks if needed, e.g. stopping firewall, configuring SELinux, etc.
