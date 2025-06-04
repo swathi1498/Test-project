@@ -1,123 +1,35 @@
 ---
 - hosts: tomcatservers
   become: yes
-  gather_facts: yes
-
-  vars:
-    java_package: java-1.8.0-openjdk
-    tomcat_version: 9.0.85
-    tomcat_user: tomcat
-    install_dir: /opt/tomcat
-    tomcat_url: "https://archive.apache.org/dist/tomcat/tomcat-9/v{{ tomcat_version }}/bin/apache-tomcat-{{ tomcat_version }}.tar.gz"
-
+  gather_facts: False
   tasks:
 
-    - name: Install Java 1.8
-      yum:
-        name: "{{ java_package }}"
-        state: present
+  - name: Install EPEL-release
+    yum: name=epel-release state=present
 
-    - name: Create tomcat group
-      group:
-        name: "{{ tomcat_user }}"
-        state: present
 
-    - name: Create tomcat user
-      user:
-        name: "{{ tomcat_user }}"
-        group: "{{ tomcat_user }}"
-        home: "{{ install_dir }}"
-        shell: /bin/false
-        system: yes
+  - name: Install java_1.8
+    yum: name=java-1.8.0-openjdk.x86_64 state=present
 
-    - name: Download Tomcat archive
-      get_url:
-        url: "{{ tomcat_url }}"
-        dest: "/tmp/apache-tomcat-{{ tomcat_version }}.tar.gz"
+  - name: Install tomcat
+    yum: name=tomcat state=present
 
-    - name: Create installation directory
-      file:
-        path: "{{ install_dir }}"
-        state: directory
 
-    - name: Extract Tomcat
-      unarchive:
-        src: "/tmp/apache-tomcat-{{ tomcat_version }}.tar.gz"
-        dest: "{{ install_dir }}"
-        remote_src: yes
-        creates: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}"
+  - name: Download latest VProfile.war file
+    get_url: url=http://{{nexusip}}:8081/nexus/content/repositories/VProfile-repo/{{groupid}}/{{time}}/{{build}}/{{vprofile_version}} dest=/tmp/ mode=755
 
-    - name: Symlink current version
-      file:
-        src: "{{ install_dir }}/apache-tomcat-{{ tomcat_version }}"
-        dest: "{{ install_dir }}/latest"
-        state: link
-        force: yes
+  - name: Stop tomcat service
+    service: name=tomcat state=stopped
 
-    - name: Set permissions
-      file:
-        path: "{{ install_dir }}"
-        state: directory
-        recurse: yes
-        owner: "{{ tomcat_user }}"
-        group: "{{ tomcat_user }}"
+  - name: Copy artifact to tomcat folder
+    shell: cp /tmp/{{vprofile_version}} /var/lib/tomcat/webapps
 
-    - name: Create systemd service for Tomcat
-      copy:
-        dest: "{{ tomcat_service_file }}"
-        content: |
-          [Unit]
-          Description=Apache Tomcat Web Application Container
-          After=network.target
+  - name: Delete link to existing vprofile version
+    file: path=/var/lib/tomcat/webapps/VProfile state=absent
 
-          [Service]
-          Type=forking
+  - name: Start tomcat service
+    service: name=tomcat state=started
+  - wait_for: path=/var/lib/tomcat/webapps/{{time}}-{{build}}
 
-          Environment=JAVA_HOME=/usr/lib/jvm/jre
-          Environment=CATALINA_PID={{ install_dir }}/latest/temp/tomcat.pid
-          Environment=CATALINA_HOME={{ install_dir }}/latest
-          Environment=CATALINA_BASE={{ install_dir }}/latest
-          ExecStart={{ install_dir }}/latest/bin/startup.sh
-          ExecStop={{ install_dir }}/latest/bin/shutdown.sh
-
-          User={{ tomcat_user }}
-          Group={{ tomcat_user }}
-          UMask=0007
-          RestartSec=10
-          Restart=always
-
-          [Install]
-          WantedBy=multi-user.target
-
-    - name: Reload systemd
-      command: systemctl daemon-reexec
-
-    - name: Start and enable Tomcat
-      service:
-        name: tomcat
-        state: started
-        enabled: yes
-
-    - name: Download VProfile WAR
-      get_url:
-        url: "http://{{ nexusip }}:8081/nexus/content/repositories/VProfile-repo/{{ groupid }}/{{ time }}/{{ build }}/{{ vprofile_version }}"
-        dest: "/tmp/{{ vprofile_version }}"
-
-    - name: Deploy WAR to Tomcat
-      copy:
-        src: "/tmp/{{ vprofile_version }}"
-        dest: "{{ install_dir }}/latest/webapps/VProfile.war"
-        owner: "{{ tomcat_user }}"
-        group: "{{ tomcat_user }}"
-        mode: '0644'
-
-    - name: Restart Tomcat after WAR deployment
-      service:
-        name: tomcat
-        state: restarted
-
-    - name: Wait for WAR to deploy
-      wait_for:
-        path: "{{ install_dir }}/latest/webapps/VProfile"
-        state: directory
-        timeout: 120
+  - name: Link latest vprofile version
+    file: src=/var/lib/tomcat/webapps/{{time}}-{{build}} dest=/var/lib/tomcat/webapps/VProfile state=link
