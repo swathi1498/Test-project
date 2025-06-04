@@ -1,38 +1,25 @@
 ---
-- name: Deploy VProfile Application on Ubuntu Tomcat Server
+- name: Deploy VProfile Application on Amazon Linux / RHEL
   hosts: tomcatservers
   become: yes
-  gather_facts: false
-
-  pre_tasks:
-    - name: Ensure Python3 is installed
-      raw: |
-        apt-get update -y
-        apt-get install -y python3
-      changed_when: false
-
-    - name: Ensure python3-apt is installed
-      raw: |
-        apt-get install -y python3-apt
-      changed_when: false
-
-    - name: Gather facts after Python setup
-      setup:
+  gather_facts: true
 
   tasks:
-    - name: Update apt package cache
-      apt:
-        update_cache: yes
-
-    - name: Install Java 8 (OpenJDK)
-      apt:
-        name: openjdk-8-jdk
+    - name: Install Java 1.8 OpenJDK
+      yum:
+        name: java-1.8.0-openjdk
         state: present
 
-    - name: Install Tomcat 9
-      apt:
-        name: tomcat9
+    - name: Install Tomcat
+      yum:
+        name: tomcat
         state: present
+
+    - name: Start and enable Tomcat
+      service:
+        name: tomcat
+        state: started
+        enabled: yes
 
     - name: Download latest VProfile.war file
       get_url:
@@ -40,41 +27,41 @@
         dest: "/tmp/{{ vprofile_version }}"
         mode: '0755'
 
-    - name: Stop Tomcat service
+    - name: Stop Tomcat before deployment
       service:
-        name: tomcat9
+        name: tomcat
         state: stopped
 
-    - name: Remove old VProfile app
+    - name: Remove existing VProfile
       file:
-        path: /var/lib/tomcat9/webapps/VProfile
+        path: /var/lib/tomcat/webapps/VProfile
         state: absent
 
-    - name: Copy new WAR to Tomcat webapps
+    - name: Deploy WAR to Tomcat
       copy:
         src: "/tmp/{{ vprofile_version }}"
-        dest: "/var/lib/tomcat9/webapps/"
+        dest: "/var/lib/tomcat/webapps/"
         mode: '0755'
 
     - name: Start Tomcat service
       service:
-        name: tomcat9
+        name: tomcat
         state: started
 
-    - name: Wait for WAR to extract
+    - name: Wait for WAR to deploy
       wait_for:
-        path: "/var/lib/tomcat9/webapps/{{ time }}-{{ build }}"
+        path: "/var/lib/tomcat/webapps/{{ time }}-{{ build }}"
         timeout: 60
 
-    - name: Link deployed app to VProfile
+    - name: Link deployed WAR to /VProfile
       file:
-        src: "/var/lib/tomcat9/webapps/{{ time }}-{{ build }}"
-        dest: "/var/lib/tomcat9/webapps/VProfile"
+        src: "/var/lib/tomcat/webapps/{{ time }}-{{ build }}"
+        dest: "/var/lib/tomcat/webapps/VProfile"
         state: link
 
-    - name: Stop UFW Firewall if running
+    - name: Stop iptables firewall
       service:
-        name: ufw
+        name: iptables
         state: stopped
         enabled: no
         ignore_errors: yes
