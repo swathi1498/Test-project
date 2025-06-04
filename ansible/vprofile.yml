@@ -4,6 +4,9 @@
   gather_facts: yes   # Enable this for OS checks and apt usage
 
   tasks:
+  - name: Update APT package cache
+    apt:
+      update_cache: yes
 
   - name: Install Java 8 (OpenJDK) on Ubuntu
     apt:
