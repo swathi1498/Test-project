@@ -3,33 +3,76 @@
   become: yes
   gather_facts: False
   tasks:
+  - name: Install Java 1.8 (OpenJDK 8) on Ubuntu
+    apt:
+      name: openjdk-8-jdk
+      state: present
+      update_cache: yes
 
-  - name: Install EPEL-release
-    yum: name=epel-release state=present
+  - name: installing tomcat
+    package:
+      name: "{{ item }}"
+      state: latest
+      update_cache: yes
+      cache_valid_time: 86400
+    with_items:
+      - tomcat10
+      - tomcat10-admin
+      - tomcat10-docs
+      - tomcat10-common
+    tags:
+     - package
 
+  - name: Install required packages
+    apt:
+      name:
+        - python3
+        - python3-venv
+      state: present
 
-  - name: Install java_1.8
-    yum: name=java-1.8.0-openjdk.x86_64 state=present
+  - name: Create a Python virtual environment
+    command: python3 -m venv /opt/pyenv
+    args:
+      creates: /opt/pyenv
 
-  - name: Install tomcat
-    yum: name=tomcat state=present
+  - name: Upgrade pip in virtualenv
+    command: /opt/pyenv/bin/pip install --upgrade pip
+    register: pip_upgrade
 
+  - name: Install PyMySQL inside virtualenv
+    pip:
+      name: PyMySQL
+      virtualenv: /opt/pyenv
+
+  - name: Confirm installation
+    command: /opt/pyenv/bin/python -c "import pymysql; print('PyMySQL installed successfully')"
+    register: pymysql_check
+    changed_when: false
+
+  - name: Show PyMySQL result
+    debug:
+      var: pymysql_check.stdout
 
   - name: Download latest VProfile.war file
     get_url: url=http://{{nexusip}}:8081/nexus/content/repositories/VProfile-repo/{{groupid}}/{{time}}/{{build}}/{{vprofile_version}} dest=/tmp/ mode=755
 
   - name: Stop tomcat service
-    service: name=tomcat state=stopped
+    service: name=tomcat10 state=stopped
 
   - name: Copy artifact to tomcat folder
-    shell: cp /tmp/{{vprofile_version}} /var/lib/tomcat/webapps
+    shell: cp /tmp/{{vprofile_version}} /var/lib/tomcat10/webapps
 
   - name: Delete link to existing vprofile version
-    file: path=/var/lib/tomcat/webapps/VProfile state=absent
+    file: path=/var/lib/tomcat10/webapps/VProfile state=absent
 
-  - name: Start tomcat service
-    service: name=tomcat state=started
-  - wait_for: path=/var/lib/tomcat/webapps/{{time}}-{{build}}
+  - name: starting tomcat10 service
+    service:
+      name: tomcat10
+      state: started
+  - wait_for: path=/var/lib/tomcat10/webapps/{{time}}-{{build}}
 
   - name: Link latest vprofile version
-    file: src=/var/lib/tomcat/webapps/{{time}}-{{build}} dest=/var/lib/tomcat/webapps/VProfile state=link
+    file: src=/var/lib/tomcat10/webapps/{{time}}-{{build}} dest=/var/lib/tomcat10/webapps/VProfile state=link
+
+  - name: Stop iptables
+    service: name=iptables state=stopped
