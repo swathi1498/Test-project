@@ -71,5 +71,10 @@
       state: started
   - wait_for: path=/var/lib/tomcat10/webapps/{{time}}-{{build}}
 
+  - name: Ensure VProfile path is absent before linking
+  file:
+    path: /var/lib/tomcat10/webapps/VProfile
+    state: absent
+
   - name: Link latest vprofile version
     file: src=/var/lib/tomcat10/webapps/{{time}}-{{build}} dest=/var/lib/tomcat10/webapps/VProfile state=link
