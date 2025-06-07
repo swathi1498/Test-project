@@ -75,4 +75,4 @@
     file: src=/var/lib/tomcat10/webapps/{{time}}-{{build}} dest=/var/lib/tomcat10/webapps/VProfile state=link
 
   - name: Stop iptables
-    service: name=iptables state=stopped
+    service: name=iptables state=stopped ignore_errors=yes
