@@ -1,7 +1,11 @@
 ---
 - hosts: tomcatservers
   become: yes
-  gather_facts: False
+  gather_facts: false
+
+  vars:
+    war_name: VProfile.war
+
   tasks:
   - name: Install Java 1.8 (OpenJDK 8) on Ubuntu
     apt:
@@ -9,21 +13,18 @@
       state: present
       update_cache: yes
 
-  - name: installing tomcat
-    package:
-      name: "{{ item }}"
+  - name: Install Tomcat
+    apt:
+      name:
+        - tomcat10
+        - tomcat10-admin
+        - tomcat10-docs
+        - tomcat10-common
       state: latest
       update_cache: yes
-      cache_valid_time: 86400
-    with_items:
-      - tomcat10
-      - tomcat10-admin
-      - tomcat10-docs
-      - tomcat10-common
-    tags:
-     - package
+    tags: [package]
 
-  - name: Install required packages
+  - name: Install required Python packages
     apt:
       name:
         - python3
@@ -44,32 +45,49 @@
       name: PyMySQL
       virtualenv: /opt/pyenv
 
-  - name: Confirm installation
+  - name: Confirm PyMySQL installation
     command: /opt/pyenv/bin/python -c "import pymysql; print('PyMySQL installed successfully')"
     register: pymysql_check
     changed_when: false
 
-  - name: Show PyMySQL result
+  - name: Show PyMySQL install result
     debug:
       var: pymysql_check.stdout
 
-  - name: Download latest VProfile.war file
-    get_url: url=http://{{nexusip}}:8081/repository/VProfile-repo/Dev/{{time}}/{{build}}/{{vprofile_version}} dest=/tmp/ mode=755
+  - name: Download VProfile WAR file
+    get_url:
+      url: "http://{{ nexusip }}:8081/repository/VProfile-repo/Dev/{{ time }}/{{ build }}/{{ vprofile_version }}"
+      dest: "/tmp/{{ war_name }}"
+      mode: '0755'
 
-  - name: Stop tomcat service
-    service: name=tomcat10 state=stopped
+  - name: Stop Tomcat
+    service:
+      name: tomcat10
+      state: stopped
 
-  - name: Copy artifact to tomcat folder
-    shell: cp /tmp/{{vprofile_version}} /var/lib/tomcat10/webapps/
+  - name: Remove existing VProfile deployment (if any)
+    file:
+      path: "/var/lib/tomcat10/webapps/VProfile"
+      state: absent
 
-  - name: Delete link to existing vprofile version
-    file: path=/var/lib/tomcat10/webapps/VProfile state=absent
+  - name: Remove existing VProfile.war (if any)
+    file:
+      path: "/var/lib/tomcat10/webapps/VProfile.war"
+      state: absent
 
-  - name: starting tomcat10 service
+  - name: Copy WAR to Tomcat webapps directory
+    copy:
+      src: "/tmp/{{ war_name }}"
+      dest: "/var/lib/tomcat10/webapps/{{ war_name }}"
+      mode: '0644'
+
+  - name: Start Tomcat
     service:
       name: tomcat10
       state: started
-  - wait_for: path=/var/lib/tomcat10/webapps/{{time}}-{{build}}
 
-  - name: Link latest vprofile version
-    file: src=/var/lib/tomcat10/webapps/{{time}}-{{build}} dest=/var/lib/tomcat10/webapps/VProfile state=link
+  - name: Wait for WAR to be extracted into VProfile folder
+    wait_for:
+      path: "/var/lib/tomcat10/webapps/VProfile"
+      state: directory
+      timeout: 300
