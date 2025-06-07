@@ -76,10 +76,7 @@
       state: absent
 
   - name: Copy WAR to Tomcat webapps directory
-    copy:
-      src: "/tmp/{{ war_name }}"
-      dest: "/var/lib/tomcat10/webapps/{{ war_name }}"
-      mode: '0644'
+    shell: cp /tmp/{{ war_name }} /var/lib/tomcat10/webapps/{{ war_name }}
 
   - name: Start Tomcat
     service:
