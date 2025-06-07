@@ -54,7 +54,7 @@
       var: pymysql_check.stdout
 
   - name: Download latest VProfile.war file
-    get_url: url=http://{{nexusip}}:8081/repository/VProfile-repo/Dev/{{ BUILD_TIMESTAMP }}/{{build}}/{{vprofile_version}} dest=/tmp/VProfile-v1.war mode=755
+    get_url: url=http://{{nexusip}}:8081/repository/VProfile-repo/Dev/{{time}}/{{build}}/{{vprofile_version}} dest=/tmp/VProfile-v1.war mode=755
 
   - name: Stop tomcat service
     service: name=tomcat10 state=stopped
