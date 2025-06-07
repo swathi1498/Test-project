@@ -60,7 +60,7 @@
     service: name=tomcat10 state=stopped
 
   - name: Copy artifact to tomcat folder
-    shell: cp /tmp/{{vprofile_version}} /var/lib/tomcat10/webapps/VProfile.war
+    shell: cp /tmp/{{vprofile_version}} /var/lib/tomcat10/webapps/VProfile
 
   - name: Delete link to existing vprofile version
     file: path=/var/lib/tomcat10/webapps/VProfile state=absent
